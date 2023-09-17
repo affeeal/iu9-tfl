@@ -1,0 +1,90 @@
+$INCLUDE "LibraryEx";
+
+$ENUM Matrix;
+
+/*
+  t.Matrix ::= (s.RowsCount s.ColsCount t.Elem*)
+  t.List ::= (t.Elem*)
+
+  s.RowsCount, s.ColsCount ::= s.NUMBER
+  t.Elem ::= t.ANY
+*/
+
+/*
+  <Take-First s.Count t.From t.To> == t.From t.To
+  t.From, t.To ::= t.List
+*/
+Take-First {
+  0 t.From t.To = t.From t.To;
+
+  s.Count (t.Head e.Tail) (e.Elems)
+    = <Take-First
+        <Dec s.Count> (e.Tail) (e.Elems t.Head)
+      >;
+}
+
+/*
+  <Duplicate s.Count t.Item> == t.Item+
+  t.Item ::= t.ANY
+*/
+Duplicate {
+  0 t.Item = /* empty */;
+
+  s.Count t.Item
+    = t.Item <Duplicate <Dec s.Count> t.Item>;
+}
+
+/*
+  <Matrix-Create s.RowsCount s.ColsCount t.Elem*>
+    == t.Matrix
+*/
+Matrix-Create {
+  s.RowsCount s.ColsCount e.Elems
+    = [Matrix s.RowsCount s.ColsCount e.Elems];
+}
+
+/*
+  <Matrix-GetRows t.Matrix> == t.List+
+*/
+Matrix-GetRows {
+  [Matrix 0 s.ColsCount /* empty */] = /* empty */;
+
+  [Matrix s.RowsCount s.ColsCount e.Elems]
+    = <Take-First s.ColsCount (e.Elems) (/* empty */)>
+    : (e.Elems^) t.Row
+    = t.Row
+      <Matrix-GetRows
+        [Matrix <Dec s.RowsCount> s.ColsCount e.Elems]
+      >;
+}
+
+/*
+  <Matrix-GetCols t.Matrix> == t.List+
+*/
+Matrix-GetCols {
+  [Matrix s.RowsCount s.ColsCount e.Elems]
+    = <UnBracket
+        <MapAccum
+          {
+            ((e.ColElems) e.RestCols) t.Elem
+              = (e.RestCols (e.ColElems t.Elem));
+          }
+          (<Duplicate s.ColsCount (/* empty */)>)
+          e.Elems
+        >
+      >;
+}
+
+/*
+  <MultiplyMatrices t.Matrix t.Matrix> == t.Matrix
+*/
+MultiplyMatrices {
+  [Matrix s.RowsCount1 s.ColsCount1 e.Elems1]
+  [Matrix s.RowsCount2 s.ColsCount2 e.Elems2]
+    = /* ... */; 
+}
+
+$ENTRY Go {
+  = /* ... */;
+}
+
