@@ -7,8 +7,22 @@ $ENUM Matrix;
   t.List ::= (t.Elem*)
 
   s.RowsCount, s.ColsCount ::= s.NUMBER
-  t.Elem ::= t.ANY
+  t.Elem ::= ...
 */
+
+/*
+  <SymAdd> == arc_add
+*/
+SymAdd {
+  = arc_add;
+}
+
+/*
+  <SymProd> == arc_prod
+*/
+SymProd {
+  = arc_prod;
+}
 
 /*
   <Take-First s.Count t.From t.To> == t.From t.To
@@ -76,15 +90,61 @@ Matrix-GetCols {
 }
 
 /*
-  <MultiplyMatrices t.Matrix t.Matrix> == t.Matrix
+  <MultiplyMatrices t.Matrix1 t.Matrix2> == t.Matrix
 */
 MultiplyMatrices {
-  [Matrix s.RowsCount1 s.ColsCount1 e.Elems1]
-  [Matrix s.RowsCount2 s.ColsCount2 e.Elems2]
-    = /* ... */; 
+  t.Matrix1 t.Matrix2
+    = t.Matrix1 : [Matrix s.RowsCount1 s.ColsCount1 e.Elems1]
+    = t.Matrix2 : [Matrix s.RowsCount2 s.ColsCount2 e.Elems2]
+    = <MapAccum
+        (&MultiplyMatrices-Aux <Matrix-GetCols t.Matrix2>)
+        <Matrix-Create s.RowsCount1 s.ColsCount2>
+        <Matrix-GetRows t.Matrix1>
+      >;
+}
+
+/*
+  <MultiplyMatrices-Aux t.Col+ t.Matrix` t.Row>
+    == t.Matrix`
+*/
+MultiplyMatrices-Aux {
+  e.Cols t.Matrix t.Row
+    = <MapAccum
+        {
+          [Matrix s.RowsCount s.ColsCount e.Elems] t.Col
+            = [Matrix
+                s.RowsCount s.ColsCount
+                e.Elems <ScalProd t.Row t.Col>
+              ];
+        }
+        t.Matrix
+        e.Cols
+      >;
+}
+
+/*
+  <ScalProd t.Row t.Col> == t.Elem
+
+  t.Row and t.Col are not empty and have equal size.
+*/
+ScalProd {
+  (t.Elem1) (t.Elem2) = (<SymProd> t.Elem1 t.Elem2);
+
+  (t.Head1 e.Tail1) (t.Head2 e.Tail2)
+    = (
+        <SymAdd>
+        (<SymProd> t.Head1 t.Head2)
+        <ScalProd (e.Tail1) (e.Tail2)>
+      );
 }
 
 $ENTRY Go {
-  = /* ... */;
+  /* demonstration */
+  = <Prout
+      <MultiplyMatrices
+        <Matrix-Create 2 2 f11 f12 f21 f22>
+        <Matrix-Create 2 1 g1 g2>
+      >
+    >;
 }
 
