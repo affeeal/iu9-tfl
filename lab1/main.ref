@@ -3,30 +3,45 @@ $INCLUDE "LibraryEx";
 $ENUM Matrix;
 
 /*
-  t.Matrix ::= (s.RowsCount s.ColsCount t.Elem*)
-  t.List ::= (t.Elem*)
-
+  t.Matrix ::= [Matrix s.RowsCount s.ColsCount t.Func*]
   s.RowsCount, s.ColsCount ::= s.NUMBER
-  t.Elem ::= ...
+  t.Func ::= s.Coef | ({s.Add | s.Prod} t.Func t.Func)
+  s.Coef ::= s.WORD
+
+  t.Vector ::= [Matrix s.RowsCount 1 t.Func*]
+
+  t.Interp ::= (s.Add (s.Prod t.Matrix s.Var) t.Vector)
 */
 
+/* Terminals. */
+
 /*
-  <SymAdd> == arc_add
+  <SymAdd> == s.Add
 */
 SymAdd {
   = arc_add;
 }
 
 /*
-  <SymProd> == arc_prod
+  <SymProd> == s.Prod
 */
 SymProd {
   = arc_prod;
 }
 
 /*
+  <SymVar> == s.Var
+*/
+SymVar {
+  = x;
+}
+
+/* Auxiliary functions. */
+
+/*
   <Take-First s.Count t.From t.To> == t.From t.To
-  t.From, t.To ::= t.List
+
+  t.From list length is greater than or equal to s.Count.
 */
 Take-First {
   0 t.From t.To = t.From t.To;
@@ -38,53 +53,64 @@ Take-First {
 }
 
 /*
-  <Duplicate s.Count t.Item> == t.Item+
-  t.Item ::= t.ANY
+  <Duplicate s.Count t.Elem> == t.Elem+
 */
 Duplicate {
-  0 t.Item = /* empty */;
+  0 t.Elem = /* empty */;
 
-  s.Count t.Item
-    = t.Item <Duplicate <Dec s.Count> t.Item>;
+  s.Count t.Elem
+    = t.Elem <Duplicate <Dec s.Count> t.Elem>;
 }
 
 /*
-  <Matrix-Create s.RowsCount s.ColsCount t.Elem*>
+  <Range s.From s.To> == s.NUMBER+
+  s.From, s.To ::= s.NUMBER
+*/
+Range {
+  s.To s.To = s.To;
+
+  s.From s.To = s.From <Range <Inc s.From> s.To>;
+}
+
+/* Matrix operations. */
+
+/*
+  <GenMatrix s.RowsCount s.ColsCount e.Funcs>
     == t.Matrix
 */
-Matrix-Create {
-  s.RowsCount s.ColsCount e.Elems
-    = [Matrix s.RowsCount s.ColsCount e.Elems];
+GenMatrix {
+  s.RowsCount s.ColsCount e.Funcs
+    = [Matrix s.RowsCount s.ColsCount e.Funcs];
 }
 
 /*
-  <Matrix-GetRows t.Matrix> == t.List+
+  <GetMatrixRows t.Matrix> == e.Rows
 */
-Matrix-GetRows {
+GetMatrixRows {
   [Matrix 0 s.ColsCount /* empty */] = /* empty */;
 
-  [Matrix s.RowsCount s.ColsCount e.Elems]
-    = <Take-First s.ColsCount (e.Elems) (/* empty */)>
-    : (e.Elems^) t.Row
+  [Matrix s.RowsCount s.ColsCount e.Funcs]
+    = <Take-First s.ColsCount (e.Funcs) (/* empty */)>
+    : (e.Funcs^) t.Row
     = t.Row
-      <Matrix-GetRows
-        [Matrix <Dec s.RowsCount> s.ColsCount e.Elems]
+      <GetMatrixRows
+        [Matrix <Dec s.RowsCount> s.ColsCount e.Funcs]
       >;
 }
 
 /*
-  <Matrix-GetCols t.Matrix> == t.List+
+  <GetMatrixCols t.Matrix> == e.Cols
 */
-Matrix-GetCols {
-  [Matrix s.RowsCount s.ColsCount e.Elems]
+GetMatrixCols {
+  [Matrix s.RowsCount s.ColsCount e.Funcs]
     = <UnBracket
         <MapAccum
           {
-            ((e.ColElems) e.RestCols) t.Elem
-              = (e.RestCols (e.ColElems t.Elem));
+            ((e.ColFuncs) e.RestCols) t.Func
+              = (e.RestCols (e.ColFuncs t.Func));
           }
           (<Duplicate s.ColsCount (/* empty */)>)
-          e.Elems
+          e.Funcs
         >
       >;
 }
@@ -94,27 +120,28 @@ Matrix-GetCols {
 */
 MultiplyMatrices {
   t.Matrix1 t.Matrix2
-    = t.Matrix1 : [Matrix s.RowsCount1 s.ColsCount1 e.Elems1]
-    = t.Matrix2 : [Matrix s.RowsCount2 s.ColsCount2 e.Elems2]
+    = t.Matrix1 : [Matrix s.RowsCount1 s.ColsCount1 e.Funcs1]
+    = t.Matrix2 : [Matrix s.RowsCount2 s.ColsCount2 e.Funcs2]
+    = s.ColsCount1 s.RowsCount2 : s.Count s.Count
     = <MapAccum
-        (&MultiplyMatrices-Aux <Matrix-GetCols t.Matrix2>)
-        <Matrix-Create s.RowsCount1 s.ColsCount2>
-        <Matrix-GetRows t.Matrix1>
+        (&MultiplyMatrices-Aux <GetMatrixCols t.Matrix2>)
+        <GenMatrix s.RowsCount1 s.ColsCount2>
+        <GetMatrixRows t.Matrix1>
       >;
 }
 
 /*
-  <MultiplyMatrices-Aux t.Col+ t.Matrix` t.Row>
-    == t.Matrix`
+  <MultiplyMatrices-Aux e.Cols t.Matrix t.Row>
+    == t.Matrix
 */
 MultiplyMatrices-Aux {
   e.Cols t.Matrix t.Row
     = <MapAccum
         {
-          [Matrix s.RowsCount s.ColsCount e.Elems] t.Col
+          [Matrix s.RowsCount s.ColsCount e.Funcs] t.Col
             = [Matrix
                 s.RowsCount s.ColsCount
-                e.Elems <ScalProd t.Row t.Col>
+                e.Funcs <ScalProd t.Row t.Col>
               ];
         }
         t.Matrix
@@ -123,12 +150,12 @@ MultiplyMatrices-Aux {
 }
 
 /*
-  <ScalProd t.Row t.Col> == t.Elem
+  <ScalProd t.Row t.Col> == t.Func
 
-  t.Row and t.Col are not empty and have equal size.
+  t.Row and t.Col are not empty and of the same size.
 */
 ScalProd {
-  (t.Elem1) (t.Elem2) = (<SymProd> t.Elem1 t.Elem2);
+  (t.Func1) (t.Func2) = (<SymProd> t.Func1 t.Func2);
 
   (t.Head1 e.Tail1) (t.Head2 e.Tail2)
     = (
@@ -138,13 +165,128 @@ ScalProd {
       );
 }
 
+/*
+  <AddUpMatrices t.Matrix1 t.Matrix2> == t.Matrix
+*/
+AddUpMatrices {
+  [Matrix s.RowsCount s.ColsCount e.Funcs1]
+  [Matrix s.RowsCount s.ColsCount e.Funcs2]
+    = [Matrix
+        s.RowsCount s.ColsCount
+        <AddUpFuncs (e.Funcs1) (e.Funcs2)>
+      ];
+}
+
+/*
+  <AddUpFuncs (e.Funcs1) (e.Funcs2)> == e.Funcs
+
+  e.Funcs1 and e.Funcs2 are of the same size.
+*/
+AddUpFuncs {
+  (t.Func1 e.RestFuncs1) (t.Func2 e.RestFuncs2)
+    = (<SymAdd> t.Func1 t.Func2)
+      <AddUpFuncs (e.RestFuncs1) (e.RestFuncs2)>;
+
+  (/* empty */) (/* empty */) = /* empty */;
+}
+
+/* Interpretation operations. */
+
+/*
+  <GenCoef s.FuncSym s.Ind+> == s.Coef
+  s.Ind ::= s.NUMBER
+*/
+GenCoef {
+  s.FuncSym e.Inds
+    = <Implode s.FuncSym <Map &Symb e.Inds>>;
+}
+
+/*
+  <GenCoefs-Matrix s.FuncSym s.RowsCount s.ColsCount>
+    == e.Coefs
+*/
+GenCoefs-Matrix {
+  s.FuncSym s.RowsCount s.ColsCount
+    = <Map
+        {
+          s.RowNum
+            = <Map
+                (&GenCoef s.FuncSym s.RowNum)
+                <Range 1 s.ColsCount>
+              >;
+        } 
+        <Range 1 s.RowsCount>
+      >;
+}
+
+/*
+  <GenCoefs-Vector s.FuncSym s.RowsCount>
+    == e.Coefs
+*/
+GenCoefs-Vector {
+  s.FuncSym s.RowsCount
+    = <Map
+        (&GenCoef s.FuncSym)
+        <Range 1 s.RowsCount>
+      >;
+}
+
+/*
+  <GenInterp s.FuncSym> == t.Interp
+*/
+GenInterp {
+  s.FuncSym
+    = (
+        <SymAdd>
+        (
+          <SymProd>
+          <GenMatrix 2 2 <GenCoefs-Matrix s.FuncSym 2 2>>
+          <SymVar>
+        )
+        <GenMatrix 2 1 <GenCoefs-Vector s.FuncSym 2>>
+      );
+}
+
+/*
+  <DoInterpComposition t.Interp1 t.Interp2> == t.Interp
+*/
+DoInterpComposition {
+  /* Assuming <SymAdd> : s.Add, <SymProd> : s.Prod
+     and <SymVar> : s.SymVar. */
+  (s.Add (s.Prod t.Matrix1 s.Var) t.Vector1)
+  (s.Add (s.Prod t.Matrix2 s.Var) t.Vector2)
+    = (
+        s.Add
+        (
+          s.Prod
+          <MultiplyMatrices t.Matrix1 t.Matrix2>
+          s.Var
+        )
+        <AddUpMatrices
+          <MultiplyMatrices t.Matrix1 t.Vector2>
+          t.Vector1
+        >
+      );
+}
+
+/*
+  <InterpretString s.FuncSym+> == t.Interp
+  s.FuncSym ::= s.CHAR
+*/
+InterpretString {
+  s.FuncSym = <GenInterp s.FuncSym>;
+
+  s.FuncSym e.RestString
+    = <DoInterpComposition
+        <GenInterp s.FuncSym>
+        <InterpretString e.RestString>
+      >;
+}
+
 $ENTRY Go {
-  /* demonstration */
+  /* demonstraion */
   = <Prout
-      <MultiplyMatrices
-        <Matrix-Create 2 2 f11 f12 f21 f22>
-        <Matrix-Create 2 1 g1 g2>
-      >
+      <InterpretString 'fg'>
     >;
 }
 
