@@ -277,10 +277,10 @@ GenFirstMatrixCoefConstr {
 }
 
 /*
-  <GenCommonCoefConstr s.Coef s.MinInf>
+  <GenCommonCoefConstr s.MinInf s.Coef>
 */
 GenCommonCoefConstr {
-  s.Coef s.MinInf
+  s.MinInf s.Coef
     = '(assert (or (>= ' s.Coef '0) (= ' s.Coef s.MinInf ')))\n';
 }
 
