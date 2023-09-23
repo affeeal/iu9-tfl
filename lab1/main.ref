@@ -1,17 +1,337 @@
 $INCLUDE "LibraryEx";
 
-$ENUM Matrix;
+$ENUM Matrix, File, Rule, Op;
 
 /*
+  t.File ::= [File s.Mode s.Descriptor s.Name]
+  s.Mode ::= 'r' | 'w'
+  s.Descriptor ::= s.NUMBER
+  s.Name ::= s.CHAR+
+
+  t.Rule ::= [Rule (e.LHS) (e.RHS)]
+  e.LHS, e.RHS ::= s.CHAR+
+
+  t.Op ::= [Op s.Add s.Mul s.Gt s.Var s.MinInf]
+  s.Add, s.Mul, s.Gt, s.Var, s.MinInf ::= s.WORD
+
   t.Matrix ::= [Matrix s.RowsCount s.ColsCount t.Func*]
   s.RowsCount, s.ColsCount ::= s.NUMBER
-  t.Func ::= s.Coef | ({s.Add | s.Prod} t.Func t.Func)
+  t.Func ::= s.Coef | ({s.Add | s.Mul} t.Func t.Func)
   s.Coef ::= s.WORD
 
   t.Vector ::= [Matrix s.RowsCount 1 t.Func*]
 
-  t.Interp ::= (s.Add (s.Prod t.Matrix s.Var) t.Vector)
+  t.Interp ::= (s.Add (s.Mul t.Matrix s.Var) t.Vector)
 */
+
+$ENTRY Go {
+  = <Arg 1> : {
+    /* empty */
+      = <Prout 'Input file name is required!'>;
+
+    e.InputFileName
+      = <GenFile 'w' 1 'output.smt2'> : t.OutputFile
+      = <GenFile 'r' 2 'template.smt2'> : t.TemplateFile
+      = <GenFile 'r' 3 e.InputFileName> : t.InputFile
+      = <ManageFile
+          t.OutputFile
+          OutputFileHandler t.TemplateFile t.InputFile
+        >;
+  };
+}
+
+/*
+  <GenFile s.Mode s.Desc e.Name> == t.File
+*/
+GenFile {
+  s.Mode s.Desc e.Name = [File s.Mode s.Desc e.Name];
+}
+
+/*
+  <ManageFile t.File s.Handler e.Args> == e.ANY
+  s.Handler ::= s.WORD, e.Args ::= e.ANY
+*/
+ManageFile {
+  t.File s.Handler e.Args
+    = t.File : [File s.Mode s.Desc e.Name]
+    = <Open s.Mode s.Desc e.Name>
+      <Mu s.Handler t.File e.Args>
+      <Close s.Desc>;
+}
+
+/*
+  <OutputFileHandler t.OutputFile t.TemplateFile t.InputFile>
+    == * empty *
+*/
+OutputFileHandler {
+  [File s.Mode s.Desc e.Name] t.TemplateFile t.InputFile
+    = <Putout
+        s.Desc
+        <ManageFile
+          t.TemplateFile
+          TemplateFileHandler t.InputFile
+        >
+      >;
+}
+
+/*
+  <TemplateFileHandler t.TemplateFile t.InputFile>
+    == s.CHAR+
+*/
+TemplateFileHandler {
+  t.TemplateFile t.InputFile
+    = t.TemplateFile : [File s.Mode s.Desc e.Name]
+    , <Get s.Desc> : {
+      0 = /* empty */;
+
+      '; BODY'
+        = <ManageFile
+            t.InputFile
+            InputFileHandler
+          >
+          <TemplateFileHandler
+            t.TemplateFile t.InputFile
+          >;
+
+      e.Line
+        = e.Line '\n'
+          <TemplateFileHandler
+            t.TemplateFile t.InputFile
+          >;
+    };
+}
+
+/*
+  <InputFileHandler t.InputFile> == s.CHAR+
+*/
+InputFileHandler {
+  t.InputFile
+    = t.InputFile : [File s.Mode s.Desc e.Name]
+    = <ReadFile t.InputFile GenRule> : e.Rules
+    = <GenOp arc_add arc_mul arc_gt x min_inf> : t.Op
+    = <GenCoefDeclsAndConstrs t.Op e.Rules> 
+      <Map
+        (&GenInequalities t.Op)
+        e.Rules
+      >;
+}
+
+/*
+  <ReadFile t.File s.Handler e.Args> == s.CHAR*
+  s.Hander ::= s.WORD, e.Args ::= e.ANY
+*/
+ReadFile {
+  t.File s.Handler e.Args
+    = t.File : [File s.Mode s.Desc e.Name]
+    , <Get s.Desc> : {
+      0 = /* empty */; 
+
+      e.Line
+        = <Mu s.Handler e.Line e.Args>
+          <ReadFile t.File s.Handler e.Args>;
+    };
+}
+
+/*
+  <GenRule e.LHS ' -> ' e.RHS>
+    == t.Rule
+    == * empty *
+  e.LHS, e.RHS ::= s.LETTER+
+
+  TODO: trim whitespaces
+*/
+GenRule {
+  e.LHS ' -> ' e.RHS = [Rule (e.LHS) (e.RHS)];
+
+  e.Other = /* empty */;
+}
+
+/*
+  <GenOp s.Add s.Mul s.Gt s.Var s.MinInf> == t.Op
+*/
+GenOp {
+  s.Add s.Mul s.Gt s.Var s.MinInf
+    = [Op s.Add s.Mul s.Gt s.Var s.MinInf];
+}
+
+/*
+  <GenCoefDeclsAndConstrs t.Op e.Rules>
+*/
+GenCoefDeclsAndConstrs {
+  t.Op e.Rules
+    = <MapAccum
+        {
+          (e.FuncSyms) [Rule (e.LHS) (e.RHS)]
+            = <AddUnique (e.FuncSyms) e.LHS e.RHS>; 
+        }
+        (/* empty */)
+        e.Rules
+      >
+    : (e.UniqueFuncSyms)
+    = <Map
+        (&GenCoefDeclsAndConstrs-Main t.Op)   
+        e.UniqueFuncSyms
+      >;
+}
+
+/*
+  <AddUnique t.Accum t.Elem*> == t.Accum
+*/
+AddUnique {
+  (e.Elems) t.Head e.Tail
+    , e.Elems : {
+      e.L t.Head e.R = <AddUnique (e.Elems) e.Tail>;
+
+      e.Other = <AddUnique (e.Elems t.Head) e.Tail>;
+    };
+
+  (e.Elems) /* empty */ = (e.Elems);
+}
+
+/*
+  <GenCoefDeclsAndConstrs-Main t.Op s.FuncSym>
+*/
+GenCoefDeclsAndConstrs-Main {
+  [Op s.Add s.Mul s.Gt s.Var s.MinInf] s.FuncSym
+    = <GenCoefs-Matrix s.FuncSym 2 2>
+    : s.FirstMatrixCoef e.MatrixCoefs
+    = <GenCoefs-Vector s.FuncSym 2>
+    : s.FirstVectorCoef s.SecondVectorCoef
+    = <Map
+        &GenCoefDecl
+        s.FirstMatrixCoef e.MatrixCoefs
+        s.FirstVectorCoef s.SecondVectorCoef
+      >
+      <GenFirstMatrixCoefConstr s.FirstMatrixCoef>
+      <Map
+        (&GenCommonCoefConstr s.MinInf)
+        e.MatrixCoefs
+      >
+      <GenFirstVectorCoefConstr
+        s.FirstVectorCoef s.SecondVectorCoef
+      >
+      <GenCommonCoefConstr s.MinInf s.SecondVectorCoef>;
+}
+
+/*
+  <GenCoef s.FuncSym s.Ind+> == s.Coef
+  s.Ind ::= s.NUMBER
+*/
+GenCoef {
+  s.FuncSym e.Inds
+    = <Implode s.FuncSym <Map &Symb e.Inds>>;
+}
+
+/*
+  <GenCoefs-Matrix s.FuncSym s.RowsCount s.ColsCount>
+    == e.Coefs
+*/
+GenCoefs-Matrix {
+  s.FuncSym s.RowsCount s.ColsCount
+    = <Map
+        {
+          s.RowNum
+            = <Map
+                (&GenCoef s.FuncSym s.RowNum)
+                <Range 1 s.ColsCount>
+              >;
+        } 
+        <Range 1 s.RowsCount>
+      >;
+}
+
+/*
+  <Range s.From s.To> == s.NUMBER+
+  s.From, s.To ::= s.NUMBER
+*/
+Range {
+  s.To s.To = s.To;
+
+  s.From s.To = s.From <Range <Inc s.From> s.To>;
+}
+
+/*
+  <GenCoefs-Vector s.FuncSym s.RowsCount>
+    == e.Coefs
+*/
+GenCoefs-Vector {
+  s.FuncSym s.RowsCount
+    = <Map
+        (&GenCoef s.FuncSym)
+        <Range 1 s.RowsCount>
+      >;
+}
+
+/*
+  <GenCoefDecl s.Coef>
+*/
+GenCoefDecl {
+  s.Coef = '(declare-fun ' s.Coef '() Int)\n';
+}
+
+/*
+  <GenFirstMatrixCoefConstr s.Coef>
+*/
+GenFirstMatrixCoefConstr {
+  s.Coef = '(assert (>= ' s.Coef '0))\n';
+}
+
+/*
+  <GenCommonCoefConstr s.Coef s.MinInf>
+*/
+GenCommonCoefConstr {
+  s.Coef s.MinInf
+    = '(assert (or (>= ' s.Coef '0) (= ' s.Coef s.MinInf ')))\n';
+}
+
+/*
+  <GenFirstVectorCoefConstr s.Coef1 s.Coef2>
+*/
+GenFirstVectorCoefConstr {
+  s.Coef1 s.Coef2
+    = '(assert (or (>= ' s.Coef1 '0) (= ' s.Coef1 s.Coef2 '0)))\n';
+}
+
+/*
+  <GenInequalities t.Op t.Rule>
+    == t.Inequality+
+*/
+GenInequalities {
+  [Op s.Add s.Mul s.Gt s.Var s.Inf]
+  [Rule (e.LHS) (e.RHS)]
+    = <InterpretString e.LHS>
+    : (s.Add (s.Mul t.Matrix1 s.Var) t.Vector1)
+    = t.Matrix1 : [Matrix 2 2 e.Funcs1]
+    = t.Vector1 : [Matrix 2 1 e.Funcs2]
+    = <InterpretString e.RHS>
+    : (s.Add (s.Mul t.Matrix2 s.Var) t.Vector2)
+    = t.Matrix2 : [Matrix 2 2 e.Funcs3]
+    = t.Vector2 : [Matrix 2 1 e.Funcs4]
+    = <Map
+        {
+          (t.Func1 t.Func2)
+            = '(assert ('s.Gt t.Func1 t.Func2'))\n';
+        }
+        <Zip
+          (e.Funcs1 e.Funcs2)
+          (e.Funcs3 e.Funcs4)
+        >
+      >;
+}
+
+/*
+  <Zip t.List1 t.List2> == t.Elem*
+
+  t.List1 and t.List2 are of the same size.
+*/
+Zip {
+  (t.Head1 e.Tail1) (t.Head2 e.Tail2)
+    = (t.Head1 t.Head2)
+      <Zip (e.Tail1) (e.Tail2)>;
+
+  (/* empty */) (/* empty */) = /* empty */;
+}
+
 
 /* Terminals. */
 
@@ -23,10 +343,10 @@ SymAdd {
 }
 
 /*
-  <SymProd> == s.Prod
+  <SymMul> == s.Mul
 */
-SymProd {
-  = arc_prod;
+SymMul {
+  = arc_mul;
 }
 
 /*
@@ -60,16 +380,6 @@ Duplicate {
 
   s.Count t.Elem
     = t.Elem <Duplicate <Dec s.Count> t.Elem>;
-}
-
-/*
-  <Range s.From s.To> == s.NUMBER+
-  s.From, s.To ::= s.NUMBER
-*/
-Range {
-  s.To s.To = s.To;
-
-  s.From s.To = s.From <Range <Inc s.From> s.To>;
 }
 
 /* Matrix operations. */
@@ -141,7 +451,7 @@ MultiplyMatrices-Aux {
           [Matrix s.RowsCount s.ColsCount e.Funcs] t.Col
             = [Matrix
                 s.RowsCount s.ColsCount
-                e.Funcs <ScalProd t.Row t.Col>
+                e.Funcs <ScalMul t.Row t.Col>
               ];
         }
         t.Matrix
@@ -150,18 +460,18 @@ MultiplyMatrices-Aux {
 }
 
 /*
-  <ScalProd t.Row t.Col> == t.Func
+  <ScalMul t.Row t.Col> == t.Func
 
   t.Row and t.Col are not empty and of the same size.
 */
-ScalProd {
-  (t.Func1) (t.Func2) = (<SymProd> t.Func1 t.Func2);
+ScalMul {
+  (t.Func1) (t.Func2) = (<SymMul> t.Func1 t.Func2);
 
   (t.Head1 e.Tail1) (t.Head2 e.Tail2)
     = (
         <SymAdd>
-        (<SymProd> t.Head1 t.Head2)
-        <ScalProd (e.Tail1) (e.Tail2)>
+        (<SymMul> t.Head1 t.Head2)
+        <ScalMul (e.Tail1) (e.Tail2)>
       );
 }
 
@@ -193,45 +503,6 @@ AddUpFuncs {
 /* Interpretation operations. */
 
 /*
-  <GenCoef s.FuncSym s.Ind+> == s.Coef
-  s.Ind ::= s.NUMBER
-*/
-GenCoef {
-  s.FuncSym e.Inds
-    = <Implode s.FuncSym <Map &Symb e.Inds>>;
-}
-
-/*
-  <GenCoefs-Matrix s.FuncSym s.RowsCount s.ColsCount>
-    == e.Coefs
-*/
-GenCoefs-Matrix {
-  s.FuncSym s.RowsCount s.ColsCount
-    = <Map
-        {
-          s.RowNum
-            = <Map
-                (&GenCoef s.FuncSym s.RowNum)
-                <Range 1 s.ColsCount>
-              >;
-        } 
-        <Range 1 s.RowsCount>
-      >;
-}
-
-/*
-  <GenCoefs-Vector s.FuncSym s.RowsCount>
-    == e.Coefs
-*/
-GenCoefs-Vector {
-  s.FuncSym s.RowsCount
-    = <Map
-        (&GenCoef s.FuncSym)
-        <Range 1 s.RowsCount>
-      >;
-}
-
-/*
   <GenInterp s.FuncSym> == t.Interp
 */
 GenInterp {
@@ -239,7 +510,7 @@ GenInterp {
     = (
         <SymAdd>
         (
-          <SymProd>
+          <SymMul>
           <GenMatrix 2 2 <GenCoefs-Matrix s.FuncSym 2 2>>
           <SymVar>
         )
@@ -251,14 +522,14 @@ GenInterp {
   <DoInterpComposition t.Interp1 t.Interp2> == t.Interp
 */
 DoInterpComposition {
-  /* Assuming <SymAdd> : s.Add, <SymProd> : s.Prod
+  /* Assuming <SymAdd> : s.Add, <SymMul> : s.Mul
      and <SymVar> : s.SymVar. */
-  (s.Add (s.Prod t.Matrix1 s.Var) t.Vector1)
-  (s.Add (s.Prod t.Matrix2 s.Var) t.Vector2)
+  (s.Add (s.Mul t.Matrix1 s.Var) t.Vector1)
+  (s.Add (s.Mul t.Matrix2 s.Var) t.Vector2)
     = (
         s.Add
         (
-          s.Prod
+          s.Mul
           <MultiplyMatrices t.Matrix1 t.Matrix2>
           s.Var
         )
@@ -281,12 +552,5 @@ InterpretString {
         <GenInterp s.FuncSym>
         <InterpretString e.RestString>
       >;
-}
-
-$ENTRY Go {
-  /* demonstraion */
-  = <Prout
-      <InterpretString 'fg'>
-    >;
 }
 
