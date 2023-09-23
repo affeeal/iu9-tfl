@@ -1,6 +1,6 @@
 $INCLUDE "LibraryEx";
 
-$ENUM Matrix, File, Rule, Op;
+$ENUM Matrix, File, Rule;
 
 /*
   t.File ::= [File s.Mode s.Descriptor s.Name]
@@ -11,9 +11,6 @@ $ENUM Matrix, File, Rule, Op;
   t.Rule ::= [Rule (e.LHS) (e.RHS)]
   e.LHS, e.RHS ::= s.CHAR+
 
-  t.Op ::= [Op s.Add s.Mul s.Gt s.Var s.MinInf]
-  s.Add, s.Mul, s.Gt, s.Var, s.MinInf ::= s.WORD
-
   t.Matrix ::= [Matrix s.RowsCount s.ColsCount t.Func*]
   s.RowsCount, s.ColsCount ::= s.NUMBER
   t.Func ::= s.Coef | ({s.Add | s.Mul} t.Func t.Func)
@@ -22,22 +19,74 @@ $ENUM Matrix, File, Rule, Op;
   t.Vector ::= [Matrix s.RowsCount 1 t.Func*]
 
   t.Interp ::= (s.Add (s.Mul t.Matrix s.Var) t.Vector)
+
+  s.Add, s.Mul, s.Gt, s.Var, s.MinInf ::= s.WORD
 */
 
-$ENTRY Go {
-  = <Arg 1> : {
-    /* empty */
-      = <Prout 'Input file name is required!'>;
+/*
+  <Const-Add> == s.Add
+*/
+Const-Add {
+  = arc_add;
+}
 
-    e.InputFileName
-      = <GenFile 'w' 1 'output.smt2'> : t.OutputFile
-      = <GenFile 'r' 2 'template.smt2'> : t.TemplateFile
-      = <GenFile 'r' 3 e.InputFileName> : t.InputFile
-      = <ManageFile
-          t.OutputFile
-          OutputFileHandler t.TemplateFile t.InputFile
-        >;
+/*
+  <Const-Mul> == s.Mul
+*/
+Const-Mul {
+  = arc_mul;
+}
+
+/*
+  <Const-Gt> == s.Gt
+*/
+Const-Gt {
+  = arc_gt;
+}
+
+/*
+  <Const-MinInf> == s.MinInf
+*/
+Const-MinInf {
+  = min_inf;
+}
+
+/*
+  <Const-Var> == s.Var
+*/
+Const-Var {
+  = x;
+}
+
+$ENTRY Go {
+  , <Map
+      { (/* empty */) = True; e.Other = False; }
+      (<Arg 1>) (<Arg 2>) (<Arg 3>)
+    > : {
+      False False False
+        = <GenFile 'w' 1 <Arg 1>> : t.OutputFile
+        = <GenFile 'r' 2 <Arg 2>> : t.TemplateFile
+        = <GenFile 'r' 3 <Arg 3>> : t.InputFile
+        = <ManageFile
+            t.OutputFile
+            OutputFileHandler t.TemplateFile t.InputFile
+          >;
+
+      e.Other
+        = <Prout
+            'Output, template and input file names are required!'
+          >;
   };
+}
+
+/*
+  <Duplicate s.Count t.Elem> == t.Elem+
+*/
+Duplicate {
+  0 t.Elem = /* empty */;
+
+  s.Count t.Elem
+    = t.Elem <Duplicate <Dec s.Count> t.Elem>;
 }
 
 /*
@@ -108,10 +157,9 @@ InputFileHandler {
   t.InputFile
     = t.InputFile : [File s.Mode s.Desc e.Name]
     = <ReadFile t.InputFile GenRule> : e.Rules
-    = <GenOp arc_add arc_mul arc_gt x min_inf> : t.Op
-    = <GenCoefDeclsAndConstrs t.Op e.Rules> 
+    = <GenCoefDeclsAndConstrs e.Rules> 
       <Map
-        (&GenInequalities t.Op)
+        (&GenInequalities)
         e.Rules
       >;
 }
@@ -147,18 +195,10 @@ GenRule {
 }
 
 /*
-  <GenOp s.Add s.Mul s.Gt s.Var s.MinInf> == t.Op
-*/
-GenOp {
-  s.Add s.Mul s.Gt s.Var s.MinInf
-    = [Op s.Add s.Mul s.Gt s.Var s.MinInf];
-}
-
-/*
-  <GenCoefDeclsAndConstrs t.Op e.Rules>
+  <GenCoefDeclsAndConstrs e.Rules>
 */
 GenCoefDeclsAndConstrs {
-  t.Op e.Rules
+  e.Rules
     = <MapAccum
         {
           (e.FuncSyms) [Rule (e.LHS) (e.RHS)]
@@ -169,7 +209,7 @@ GenCoefDeclsAndConstrs {
       >
     : (e.UniqueFuncSyms)
     = <Map
-        (&GenCoefDeclsAndConstrs-Main t.Op)   
+        (&GenCoefDeclsAndConstrs-Main)   
         e.UniqueFuncSyms
       >;
 }
@@ -189,10 +229,10 @@ AddUnique {
 }
 
 /*
-  <GenCoefDeclsAndConstrs-Main t.Op s.FuncSym>
+  <GenCoefDeclsAndConstrs-Main s.FuncSym>
 */
 GenCoefDeclsAndConstrs-Main {
-  [Op s.Add s.Mul s.Gt s.Var s.MinInf] s.FuncSym
+  s.FuncSym
     = <GenCoefs-Matrix s.FuncSym 2 2>
     : s.FirstMatrixCoef e.MatrixCoefs
     = <GenCoefs-Vector s.FuncSym 2>
@@ -204,13 +244,13 @@ GenCoefDeclsAndConstrs-Main {
       >
       <GenFirstMatrixCoefConstr s.FirstMatrixCoef>
       <Map
-        (&GenCommonCoefConstr s.MinInf)
+        (&GenCommonCoefConstr)
         e.MatrixCoefs
       >
       <GenFirstVectorCoefConstr
         s.FirstVectorCoef s.SecondVectorCoef
       >
-      <GenCommonCoefConstr s.MinInf s.SecondVectorCoef>;
+      <GenCommonCoefConstr s.SecondVectorCoef>;
 }
 
 /*
@@ -277,11 +317,11 @@ GenFirstMatrixCoefConstr {
 }
 
 /*
-  <GenCommonCoefConstr s.MinInf s.Coef>
+  <GenCommonCoefConstr s.Coef>
 */
 GenCommonCoefConstr {
-  s.MinInf s.Coef
-    = '(assert (or (>= ' s.Coef '0) (= ' s.Coef s.MinInf ')))\n';
+  s.Coef
+    = '(assert (or (>= ' s.Coef '0) (= ' s.Coef <Const-MinInf> ')))\n';
 }
 
 /*
@@ -293,24 +333,29 @@ GenFirstVectorCoefConstr {
 }
 
 /*
-  <GenInequalities t.Op t.Rule>
+  <GenInequalities t.Rule>
     == t.Inequality+
 */
 GenInequalities {
-  [Op s.Add s.Mul s.Gt s.Var s.Inf]
   [Rule (e.LHS) (e.RHS)]
     = <InterpretString e.LHS>
-    : (s.Add (s.Mul t.Matrix1 s.Var) t.Vector1)
-    = t.Matrix1 : [Matrix 2 2 e.Funcs1]
-    = t.Vector1 : [Matrix 2 1 e.Funcs2]
+    /* Assuming <Const-Add> : s.Add, <Const-Mul> : s.Mul
+       and <Const-Var> : s.Var */
+    : (
+        s.Add
+        (s.Mul [Matrix 2 2 e.Funcs1] s.Var)
+        [Matrix 2 1 e.Funcs2]
+      )
     = <InterpretString e.RHS>
-    : (s.Add (s.Mul t.Matrix2 s.Var) t.Vector2)
-    = t.Matrix2 : [Matrix 2 2 e.Funcs3]
-    = t.Vector2 : [Matrix 2 1 e.Funcs4]
+    : (
+        s.Add^
+        (s.Mul^ [Matrix 2 2 e.Funcs3] s.Var^)
+        [Matrix 2 1 e.Funcs4]
+      )
     = <Map
         {
           (t.Func1 t.Func2)
-            = '(assert ('s.Gt t.Func1 t.Func2'))\n';
+            = '(assert ('<Const-Gt> t.Func1 t.Func2'))\n';
         }
         <Zip
           (e.Funcs1 e.Funcs2)
@@ -332,57 +377,37 @@ Zip {
   (/* empty */) (/* empty */) = /* empty */;
 }
 
-
-/* Terminals. */
-
 /*
-  <SymAdd> == s.Add
+  <InterpretString s.FuncSym+> == t.Interp
 */
-SymAdd {
-  = arc_add;
+InterpretString {
+  e.String
+    , e.String : {
+      s.FuncSym = <GenInterp s.FuncSym>;
+
+      s.FuncSym e.RestString
+        = <DoInterpComposition
+            <GenInterp s.FuncSym>
+            <InterpretString e.RestString>
+          >;
+    };
 }
 
 /*
-  <SymMul> == s.Mul
+  <GenInterp s.FuncSym> == t.Interp
 */
-SymMul {
-  = arc_mul;
+GenInterp {
+  s.FuncSym
+    = (
+        <Const-Add>
+        (
+          <Const-Mul>
+          <GenMatrix 2 2 <GenCoefs-Matrix s.FuncSym 2 2>>
+          <Const-Var>
+        )
+        <GenMatrix 2 1 <GenCoefs-Vector s.FuncSym 2>>
+      );
 }
-
-/*
-  <SymVar> == s.Var
-*/
-SymVar {
-  = x;
-}
-
-/* Auxiliary functions. */
-
-/*
-  <Take-First s.Count t.From t.To> == t.From t.To
-
-  t.From list length is greater than or equal to s.Count.
-*/
-Take-First {
-  0 t.From t.To = t.From t.To;
-
-  s.Count (t.Head e.Tail) (e.Elems)
-    = <Take-First
-        <Dec s.Count> (e.Tail) (e.Elems t.Head)
-      >;
-}
-
-/*
-  <Duplicate s.Count t.Elem> == t.Elem+
-*/
-Duplicate {
-  0 t.Elem = /* empty */;
-
-  s.Count t.Elem
-    = t.Elem <Duplicate <Dec s.Count> t.Elem>;
-}
-
-/* Matrix operations. */
 
 /*
   <GenMatrix s.RowsCount s.ColsCount e.Funcs>
@@ -391,6 +416,43 @@ Duplicate {
 GenMatrix {
   s.RowsCount s.ColsCount e.Funcs
     = [Matrix s.RowsCount s.ColsCount e.Funcs];
+}
+
+/*
+  <DoInterpComposition t.Interp1 t.Interp2> == t.Interp
+*/
+DoInterpComposition {
+  /* Assuming <Const-Add> : s.Add, <Const-Mul> : s.Mul
+     and <Const-Var> : s.Var */
+  (s.Add (s.Mul t.Matrix1 s.Var) t.Vector1)
+  (s.Add (s.Mul t.Matrix2 s.Var) t.Vector2)
+    = (
+        s.Add
+        (
+          s.Mul
+          <MultiplyMatrices t.Matrix1 t.Matrix2>
+          s.Var
+        )
+        <AddUpMatrices
+          <MultiplyMatrices t.Matrix1 t.Vector2>
+          t.Vector1
+        >
+      );
+}
+
+/*
+  <MultiplyMatrices t.Matrix1 t.Matrix2> == t.Matrix
+*/
+MultiplyMatrices {
+  t.Matrix1 t.Matrix2
+    = t.Matrix1 : [Matrix s.RowsCount1 s.ColsCount1 e.Funcs1]
+    = t.Matrix2 : [Matrix s.RowsCount2 s.ColsCount2 e.Funcs2]
+    = s.ColsCount1 s.RowsCount2 : s.Count s.Count
+    = <MapAccum
+        (&MultiplyMatrices-Aux <GetMatrixCols t.Matrix2>)
+        <GenMatrix s.RowsCount1 s.ColsCount2>
+        <GetMatrixRows t.Matrix1>
+      >;
 }
 
 /*
@@ -409,6 +471,20 @@ GetMatrixRows {
 }
 
 /*
+  <Take-First s.Count t.From t.To> == t.From t.To
+
+  t.From list length is greater than or equal to s.Count.
+*/
+Take-First {
+  0 t.From t.To = t.From t.To;
+
+  s.Count (t.Head e.Tail) (e.Elems)
+    = <Take-First
+        <Dec s.Count> (e.Tail) (e.Elems t.Head)
+      >;
+}
+
+/*
   <GetMatrixCols t.Matrix> == e.Cols
 */
 GetMatrixCols {
@@ -422,21 +498,6 @@ GetMatrixCols {
           (<Duplicate s.ColsCount (/* empty */)>)
           e.Funcs
         >
-      >;
-}
-
-/*
-  <MultiplyMatrices t.Matrix1 t.Matrix2> == t.Matrix
-*/
-MultiplyMatrices {
-  t.Matrix1 t.Matrix2
-    = t.Matrix1 : [Matrix s.RowsCount1 s.ColsCount1 e.Funcs1]
-    = t.Matrix2 : [Matrix s.RowsCount2 s.ColsCount2 e.Funcs2]
-    = s.ColsCount1 s.RowsCount2 : s.Count s.Count
-    = <MapAccum
-        (&MultiplyMatrices-Aux <GetMatrixCols t.Matrix2>)
-        <GenMatrix s.RowsCount1 s.ColsCount2>
-        <GetMatrixRows t.Matrix1>
       >;
 }
 
@@ -465,12 +526,12 @@ MultiplyMatrices-Aux {
   t.Row and t.Col are not empty and of the same size.
 */
 ScalMul {
-  (t.Func1) (t.Func2) = (<SymMul> t.Func1 t.Func2);
+  (t.Func1) (t.Func2) = (<Const-Mul> t.Func1 t.Func2);
 
   (t.Head1 e.Tail1) (t.Head2 e.Tail2)
     = (
-        <SymAdd>
-        (<SymMul> t.Head1 t.Head2)
+        <Const-Add>
+        (<Const-Mul> t.Head1 t.Head2)
         <ScalMul (e.Tail1) (e.Tail2)>
       );
 }
@@ -494,63 +555,9 @@ AddUpMatrices {
 */
 AddUpFuncs {
   (t.Func1 e.RestFuncs1) (t.Func2 e.RestFuncs2)
-    = (<SymAdd> t.Func1 t.Func2)
+    = (<Const-Add> t.Func1 t.Func2)
       <AddUpFuncs (e.RestFuncs1) (e.RestFuncs2)>;
 
   (/* empty */) (/* empty */) = /* empty */;
-}
-
-/* Interpretation operations. */
-
-/*
-  <GenInterp s.FuncSym> == t.Interp
-*/
-GenInterp {
-  s.FuncSym
-    = (
-        <SymAdd>
-        (
-          <SymMul>
-          <GenMatrix 2 2 <GenCoefs-Matrix s.FuncSym 2 2>>
-          <SymVar>
-        )
-        <GenMatrix 2 1 <GenCoefs-Vector s.FuncSym 2>>
-      );
-}
-
-/*
-  <DoInterpComposition t.Interp1 t.Interp2> == t.Interp
-*/
-DoInterpComposition {
-  /* Assuming <SymAdd> : s.Add, <SymMul> : s.Mul
-     and <SymVar> : s.SymVar. */
-  (s.Add (s.Mul t.Matrix1 s.Var) t.Vector1)
-  (s.Add (s.Mul t.Matrix2 s.Var) t.Vector2)
-    = (
-        s.Add
-        (
-          s.Mul
-          <MultiplyMatrices t.Matrix1 t.Matrix2>
-          s.Var
-        )
-        <AddUpMatrices
-          <MultiplyMatrices t.Matrix1 t.Vector2>
-          t.Vector1
-        >
-      );
-}
-
-/*
-  <InterpretString s.FuncSym+> == t.Interp
-  s.FuncSym ::= s.CHAR
-*/
-InterpretString {
-  s.FuncSym = <GenInterp s.FuncSym>;
-
-  s.FuncSym e.RestString
-    = <DoInterpComposition
-        <GenInterp s.FuncSym>
-        <InterpretString e.RestString>
-      >;
 }
 
