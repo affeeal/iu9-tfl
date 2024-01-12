@@ -5,7 +5,7 @@ pub mod nl;
 use clap::Parser;
 use nl::Nl;
 
-use crate::automata::AutomataImpl;
+use crate::automata::{Automata, AutomataImpl};
 use crate::mat::MatImpl;
 use crate::nl::NlImpl;
 
@@ -25,5 +25,6 @@ fn main() {
     let dfa = nl.get_dfa();
     let dfa_impl = dfa.as_any().downcast_ref::<AutomataImpl>().unwrap();
 
-    dbg!(dfa_impl);
+    dbg!(&dfa_impl);
+    println!("{}", dfa_impl.to_regex().unwrap_or("EMPTY".to_string()));
 }

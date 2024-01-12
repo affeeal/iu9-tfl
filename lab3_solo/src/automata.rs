@@ -12,6 +12,8 @@ pub trait Automata {
     fn check_membership(&self, word: &str) -> bool;
 
     fn determinize(&self) -> Box<dyn Automata>;
+
+    fn to_regex(&self) -> Option<String>;
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -131,6 +133,34 @@ impl Automata for AutomataImpl {
 
         Box::new(automata)
     }
+
+    fn to_regex(&self) -> Option<String> {
+        let mut automata = self.prepare_for_state_elimination();
+
+        loop {
+            let mut current = START;
+            while current < automata.size
+                && (automata.start_states[current] || automata.finite_states[current])
+            {
+                current += 1;
+            }
+
+            if current == automata.size {
+                break match &automata.transitions[START].last().unwrap() {
+                    Some(regex) => Some(regex.to_owned()),
+                    None => None,
+                };
+            }
+
+            for incoming in automata.get_incoming_states(current) {
+                for outcoming in automata.get_outcoming_states(current) {
+                    automata.eliminate_transition(incoming, current, outcoming);
+                }
+            }
+
+            automata.eliminate_state(current);
+        }
+    }
 }
 
 impl AutomataImpl {
@@ -138,16 +168,148 @@ impl AutomataImpl {
         let mut start_states = vec![false; size];
         start_states[START] = true;
 
-        let transition_matrix = vec![vec![None; size]; size];
+        let transitions = vec![vec![None; size]; size];
 
         let finite_states = vec![false; size];
 
         Self {
             start_states,
-            transitions: transition_matrix,
+            transitions,
             finite_states,
             size,
         }
+    }
+
+    fn prepare_for_state_elimination(&self) -> AutomataImpl {
+        let mut automata = AutomataImpl::new(self.size + 1);
+
+        for (i, row) in self.transitions.iter().enumerate() {
+            for (j, letter) in row.iter().enumerate() {
+                automata.transitions[i][j] = letter.to_owned();
+            }
+
+            if self.finite_states[i] {
+                *automata.transitions[i].last_mut().unwrap() = Some(EPSILON.to_owned());
+            }
+        }
+
+        *automata.finite_states.last_mut().unwrap() = true;
+
+        automata
+    }
+
+    fn get_outcoming_states(&self, i: usize) -> Vec<usize> {
+        let mut outcoming_states = Vec::<usize>::new();
+
+        for j in 0..self.size {
+            if self.transitions[i][j].is_some() && j != i {
+                outcoming_states.push(j);
+            }
+        }
+
+        outcoming_states
+    }
+
+    fn get_incoming_states(&self, i: usize) -> Vec<usize> {
+        let mut incoming_states = Vec::<usize>::new();
+
+        for j in 0..self.size {
+            if self.transitions[j][i].is_some() && j != i {
+                incoming_states.push(j);
+            }
+        }
+
+        incoming_states
+    }
+
+    fn eliminate_transition(&mut self, incoming: usize, current: usize, outcoming: usize) {
+        let former_regex_opt = &self.transitions[incoming][outcoming];
+        let incoming_regex = self.transitions[incoming][current].as_ref().unwrap();
+        let cyclic_regex_opt = &self.transitions[current][current];
+        let outcoming_regex = self.transitions[current][outcoming].as_ref().unwrap();
+
+        if Self::is_unfold_axiom_applicable(
+            former_regex_opt,
+            incoming_regex,
+            cyclic_regex_opt,
+            outcoming_regex,
+        ) {
+            self.transitions[incoming][outcoming] =
+                Some(format!("{}*", Self::wrap_if_needed(incoming_regex)));
+            return;
+        }
+
+        let mut result = String::new();
+
+        let mut can_be_epsilon = false;
+        let mut must_be_wrapped = false;
+
+        if let Some(former_regex) = former_regex_opt {
+            if former_regex.eq(&EPSILON) {
+                can_be_epsilon = true;
+            } else {
+                must_be_wrapped = true;
+                result.push_str(&format!("{former_regex}|"));
+            }
+        }
+
+        result.push_str(incoming_regex);
+
+        if let Some(cyclic_regex) = cyclic_regex_opt {
+            result.push_str(&format!("{}*", Self::wrap_if_needed(cyclic_regex)));
+        }
+
+        if outcoming_regex.ne(&EPSILON) {
+            result.push_str(outcoming_regex);
+        }
+
+        if must_be_wrapped {
+            result = Self::wrap(&result);
+        }
+
+        if can_be_epsilon {
+            result = format!("{}?", Self::wrap_if_needed(&result));
+        }
+
+        self.transitions[incoming][outcoming] = Some(result);
+    }
+
+    fn is_unfold_axiom_applicable(
+        former_regex_opt: &Option<String>,
+        incoming_regex: &String,
+        cyclic_regex_opt: &Option<String>,
+        outcoming_regex: &String,
+    ) -> bool {
+        *former_regex_opt == Some(EPSILON.to_owned())
+            && Some(incoming_regex.clone()) == *cyclic_regex_opt
+            && *outcoming_regex == EPSILON
+    }
+
+    fn wrap_if_needed(regex: &String) -> String {
+        if regex.len() == 1
+            || regex.chars().next() == Some('(') && regex.chars().last() == Some(')')
+        {
+            return regex.to_string();
+        }
+
+        Self::wrap(regex)
+    }
+
+    fn wrap(regex: &String) -> String {
+        format!("({regex})")
+    }
+
+    fn eliminate_state(&mut self, i: usize) {
+        self.start_states.swap_remove(i);
+
+        self.transitions.swap_remove(i);
+        for transition_row in &mut self.transitions {
+            transition_row.swap_remove(i);
+        }
+
+        self.finite_states.swap_remove(i);
+
+        self.size -= 1;
     }
 
     fn get_epsilon_closure(&self, subset: &BTreeSet<usize>) -> BTreeSet<usize> {
