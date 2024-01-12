@@ -1,2 +1,5 @@
 *.aux
 *.log
+target
+script1
+script2
