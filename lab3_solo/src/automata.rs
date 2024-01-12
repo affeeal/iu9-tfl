@@ -14,7 +14,7 @@ pub trait Automata {
     fn determinize(&self) -> Box<dyn Automata>;
 }
 
-#[derive(Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct AutomataImpl {
     pub size: usize,
     pub transitions: Vec<Vec<Option<String>>>,
@@ -29,10 +29,10 @@ impl Automata for AutomataImpl {
 
     fn check_membership(&self, word: &str) -> bool {
         let mut state = START;
-        
+
         for letter in word.chars() {
             let letter = letter.to_string();
-            
+
             let mut next_state = std::usize::MAX;
             for (i, label) in self.transitions[state].iter().enumerate() {
                 if label.as_ref().eq(&Some(&letter)) {

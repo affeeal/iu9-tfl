@@ -8,13 +8,13 @@ use std::collections::HashMap;
 use crate::automata::{Automata, AutomataImpl, EPSILON, START};
 use crate::mat::{EquivalenceCheckResult, Mat};
 use crate::nl::extended_table::ExtendedTable;
-use crate::nl::main_table::MainTable;
+use crate::nl::main_table::{CoverageMode, MainTable};
 
 // TODO: оптимизировать итерации в check_consistency
 // TODO: использовать BTreeSet заместо HashSet?
 
 pub trait Nl {
-    fn get_nfa(&mut self) -> Box<dyn Automata>;
+    fn get_dfa(&mut self) -> Box<dyn Automata>;
 }
 
 pub struct NlImpl<'a> {
@@ -24,7 +24,7 @@ pub struct NlImpl<'a> {
 }
 
 impl<'a> Nl for NlImpl<'a> {
-    fn get_nfa(&mut self) -> Box<dyn Automata> {
+    fn get_dfa(&mut self) -> Box<dyn Automata> {
         loop {
             if let CompletenessCheckResult::UncoveredPrefix(prefix) = self.check_completeness() {
                 self.insert_prefix(&prefix);
@@ -43,10 +43,11 @@ impl<'a> Nl for NlImpl<'a> {
                 self.mat.check_equivalence(dfa.as_ref())
             {
                 self.insert_prefix_recursive(&word);
+
                 continue;
             }
 
-            break nfa;
+            break dfa;
         }
     }
 }
@@ -71,8 +72,9 @@ impl<'a> NlImpl<'a> {
     }
 
     fn insert_prefix_recursive(&mut self, prefix: &str) {
-        for i in 1..prefix.len() {
-            self.insert_prefix(&prefix[0..i]);
+        for i in 1..=prefix.len() {
+            let word = &prefix[0..i];
+            self.insert_prefix(word);
         }
     }
 
@@ -89,11 +91,14 @@ impl<'a> NlImpl<'a> {
     fn check_completeness(&self) -> CompletenessCheckResult {
         for prefix in &self.extended_table.prefixes {
             let membership_suffixes = self
-                .main_table
+                .extended_table
                 .prefix_to_membership_suffixes
                 .get(prefix)
                 .unwrap();
-            if !self.main_table.is_covered(prefix, membership_suffixes) {
+            if !self
+                .main_table
+                .is_covered(prefix, membership_suffixes, CoverageMode::Inclusive)
+            {
                 return CompletenessCheckResult::UncoveredPrefix(prefix.to_owned());
             }
         }
@@ -163,8 +168,7 @@ impl<'a> NlImpl<'a> {
                 );
                 for absorbed_prefix in &extension_absorbed_prefixes {
                     let absorbed_prefix_index = prefix_to_index.get(absorbed_prefix).unwrap();
-                    automata.transitions[*index][*absorbed_prefix_index] =
-                        Some(letter.to_string());
+                    automata.transitions[*index][*absorbed_prefix_index] = Some(letter.to_string());
                 }
             }
         }

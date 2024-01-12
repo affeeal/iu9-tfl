@@ -26,6 +26,7 @@ fn get_next_word(mat: &dyn Mat) -> String {
 
             TEST_WORDS.clear();
             TEST_WORDS.append(&mut extension);
+            LAST_TEST_WORD = 0;
         }
 
         next_word
@@ -45,17 +46,17 @@ pub trait Mat {
     fn get_alphabet(&self) -> String;
 }
 
-pub struct MatScript {
+pub struct MatImpl {
     alphabet: String,
     test_words: Vec<String>,
     last_word: usize,
     max_tests: usize,
-    script_path: String,
+    oracle_path: String,
 }
 
-impl Mat for MatScript {
+impl Mat for MatImpl {
     fn check_membership(&self, word: &str) -> bool {
-        let output = Command::new(&self.script_path).arg(word).output().unwrap();
+        let output = Command::new(&self.oracle_path).arg(word).output().unwrap();
         String::from_utf8(output.stdout).unwrap().eq("1\n")
     }
 
@@ -75,15 +76,14 @@ impl Mat for MatScript {
     }
 }
 
-impl MatScript {
-    pub fn new(alphabet: &str, max_tests: usize, script_path: &str) -> Self {
+impl MatImpl {
+    pub fn new(alphabet: &str, max_tests: usize, oracle_path: &str) -> Self {
         Self {
             alphabet: alphabet.to_owned(),
             test_words: vec!["".to_string()],
             last_word: 0,
             max_tests,
-            script_path: script_path.to_owned(),
+            oracle_path: oracle_path.to_owned(),
         }
     }
 }
-
