@@ -26,5 +26,6 @@ fn main() {
     let dfa_impl = dfa.as_any().downcast_ref::<AutomataImpl>().unwrap();
 
     dbg!(&dfa_impl);
-    println!("{}", dfa_impl.to_regex().unwrap_or("EMPTY".to_string()));
+
+    println!("Regular expression: {}", dfa_impl.to_regex().unwrap_or("EMPTY".to_string()));
 }
