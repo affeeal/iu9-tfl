@@ -3,8 +3,7 @@
 use std::any::Any;
 use std::collections::{BTreeSet, HashMap, HashSet, VecDeque};
 
-use crate::config::EPSILON;
-
+pub const EPSILON: &str = "";
 pub const START: usize = 0;
 
 pub trait Automata {
@@ -29,7 +28,27 @@ impl Automata for AutomataImpl {
     }
 
     fn check_membership(&self, word: &str) -> bool {
-        todo!()
+        let mut state = START;
+        
+        for letter in word.chars() {
+            let letter = letter.to_string();
+            
+            let mut next_state = std::usize::MAX;
+            for (i, label) in self.transitions[state].iter().enumerate() {
+                if label.as_ref().eq(&Some(&letter)) {
+                    next_state = i;
+                    break;
+                }
+            }
+
+            if next_state == std::usize::MAX {
+                return false;
+            }
+
+            state = next_state;
+        }
+
+        self.finite_states[state]
     }
 
     fn determinize(&self) -> Box<dyn Automata> {

@@ -1,7 +1,6 @@
-use std::collections::HashMap;
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 
-use crate::config::{ALPHABET, EPSILON};
+use crate::automata::EPSILON;
 use crate::mat::Mat;
 
 pub struct ExtendedTable<'a> {
@@ -27,7 +26,7 @@ impl<'a> ExtendedTable<'a> {
     }
 
     pub fn insert_prefix(&mut self, prefix: &str) {
-        for letter in ALPHABET.chars() {
+        for letter in self.mat.get_alphabet().chars() {
             let new_prefix = format!("{prefix}{letter}");
             self.insert_prefix_impl(&new_prefix);
         }

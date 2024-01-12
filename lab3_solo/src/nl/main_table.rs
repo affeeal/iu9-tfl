@@ -1,7 +1,6 @@
-use std::collections::HashMap;
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 
-use crate::config::EPSILON;
+use crate::automata::EPSILON;
 use crate::mat::Mat;
 
 pub struct MainTable<'a> {

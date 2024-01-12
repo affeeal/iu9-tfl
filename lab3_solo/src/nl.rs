@@ -5,13 +5,13 @@ mod main_table;
 
 use std::collections::HashMap;
 
-use crate::automata::{Automata, AutomataImpl, START};
-use crate::config::{ALPHABET, EPSILON};
+use crate::automata::{Automata, AutomataImpl, EPSILON, START};
 use crate::mat::{EquivalenceCheckResult, Mat};
 use crate::nl::extended_table::ExtendedTable;
 use crate::nl::main_table::MainTable;
 
 // TODO: оптимизировать итерации в check_consistency
+// TODO: использовать BTreeSet заместо HashSet?
 
 pub trait Nl {
     fn get_nfa(&mut self) -> Box<dyn Automata>;
@@ -37,9 +37,10 @@ impl<'a> Nl for NlImpl<'a> {
             }
 
             let nfa = self.build_nfa();
+            let dfa = nfa.determinize();
 
             if let EquivalenceCheckResult::Counterexample(word) =
-                self.mat.check_equivalence(nfa.as_ref())
+                self.mat.check_equivalence(dfa.as_ref())
             {
                 self.insert_prefix_recursive(&word);
                 continue;
@@ -107,7 +108,7 @@ impl<'a> NlImpl<'a> {
                     continue;
                 }
 
-                for letter in ALPHABET.chars() {
+                for letter in self.mat.get_alphabet().chars() {
                     let new_prefix_1 = format!("{prefix_1}{letter}");
                     let new_prefix_2 = format!("{prefix_2}{letter}");
 
@@ -152,7 +153,7 @@ impl<'a> NlImpl<'a> {
         }
 
         for (prefix, index) in &prefix_to_index {
-            for letter in ALPHABET.chars() {
+            for letter in self.mat.get_alphabet().chars() {
                 let extension = format!("{prefix}{letter}");
                 let extension_absorbed_prefixes = self.main_table.get_absorbed_basic_prefixes(
                     self.extended_table
