@@ -97,6 +97,10 @@ impl<'a> MainTable<'a> {
         membership_suffixes: &HashSet<String>,
         mode: CoverageMode,
     ) -> bool {
+        if membership_suffixes.is_empty() && matches!(mode, CoverageMode::Exclusive) {
+            return false;
+        }
+        
         let non_membership_suffixes = self.suffixes.difference(membership_suffixes);
 
         let mut forbidden_prefixes = HashSet::new();

@@ -48,10 +48,9 @@ pub trait Mat {
 
 pub struct MatImpl {
     alphabet: String,
-    test_words: Vec<String>,
-    last_word: usize,
-    max_tests: usize,
     oracle_path: String,
+    max_tests: usize,
+    word_max_len: usize,
 }
 
 impl Mat for MatImpl {
@@ -63,6 +62,11 @@ impl Mat for MatImpl {
     fn check_equivalence(&self, automata: &dyn Automata) -> EquivalenceCheckResult {
         for _ in 0..self.max_tests {
             let word = get_next_word(self);
+            if word.len().ge(&self.word_max_len) {
+                dbg!("Equivalence check has passed, because max_word_len has been reached");
+                return EquivalenceCheckResult::Ok;
+            }
+
             if self.check_membership(&word) && !automata.check_membership(&word) {
                 return EquivalenceCheckResult::Counterexample(word);
             }
@@ -77,13 +81,12 @@ impl Mat for MatImpl {
 }
 
 impl MatImpl {
-    pub fn new(alphabet: &str, max_tests: usize, oracle_path: &str) -> Self {
+    pub fn new(alphabet: &str, oracle_path: &str, max_tests: usize, word_max_len: usize) -> Self {
         Self {
             alphabet: alphabet.to_owned(),
-            test_words: vec!["".to_string()],
-            last_word: 0,
-            max_tests,
             oracle_path: oracle_path.to_owned(),
+            max_tests,
+            word_max_len,
         }
     }
 }

@@ -26,12 +26,18 @@ pub struct NlImpl<'a> {
 impl<'a> Nl for NlImpl<'a> {
     fn get_dfa(&mut self) -> Box<dyn Automata> {
         loop {
+            dbg!(&self.main_table.prefixes);
+            dbg!(&self.main_table.basic_prefixes);
+            dbg!(&self.main_table.suffixes);
+
             if let CompletenessCheckResult::UncoveredPrefix(prefix) = self.check_completeness() {
+                println!("fix completeness");
                 self.insert_prefix(&prefix);
                 continue;
             }
 
             if let ConsistencyCheckResult::DistinguishingSuffix(suffix) = self.check_consistency() {
+                println!("fix consistency");
                 self.insert_suffix(&suffix);
                 continue;
             }
@@ -42,8 +48,8 @@ impl<'a> Nl for NlImpl<'a> {
             if let EquivalenceCheckResult::Counterexample(word) =
                 self.mat.check_equivalence(dfa.as_ref())
             {
+                println!("counterexample");
                 self.insert_prefix_recursive(&word);
-
                 continue;
             }
 
@@ -98,8 +104,7 @@ impl<'a> NlImpl<'a> {
             if !self
                 .main_table
                 .is_covered(prefix, membership_suffixes, CoverageMode::Inclusive)
-            {
-                return CompletenessCheckResult::UncoveredPrefix(prefix.to_owned());
+            { return CompletenessCheckResult::UncoveredPrefix(prefix.to_owned());
             }
         }
 
@@ -183,6 +188,8 @@ impl<'a> NlImpl<'a> {
             let index = prefix_to_index.get(prefix).unwrap();
             automata.finite_states[*index] = true;
         }
+
+        dbg!(&automata);
 
         Box::new(automata)
     }

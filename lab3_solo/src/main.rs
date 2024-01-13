@@ -13,13 +13,14 @@ use crate::nl::NlImpl;
 struct Cli {
     alphabet: String,
     oracle_path: String,
-    tests: usize,
+    max_tests: usize,
+    word_max_len: usize,
 }
 
 fn main() {
     let args = Cli::parse();
 
-    let mat = MatImpl::new(&args.alphabet, args.tests, &args.oracle_path);
+    let mat = MatImpl::new(&args.alphabet, &args.oracle_path, args.max_tests, args.word_max_len);
     let mut nl = NlImpl::new(&mat);
 
     let dfa = nl.get_dfa();
