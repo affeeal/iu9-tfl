@@ -5,7 +5,7 @@ pub mod nl;
 use clap::Parser;
 use nl::Nl;
 
-use crate::automata::{Automata, AutomataImpl};
+use crate::automata::AutomataImpl;
 use crate::mat::MatImpl;
 use crate::nl::NlImpl;
 
@@ -27,6 +27,4 @@ fn main() {
     let dfa_impl = dfa.as_any().downcast_ref::<AutomataImpl>().unwrap();
 
     println!("{:?}", &dfa_impl);
-
-    println!("Regular expression: {}", dfa_impl.to_regex().unwrap_or("EMPTY".to_string()));
 }

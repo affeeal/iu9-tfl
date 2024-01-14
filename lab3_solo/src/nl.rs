@@ -29,6 +29,8 @@ impl<'a> Nl for NlImpl<'a> {
             dbg!(&self.main_table.prefixes);
             dbg!(&self.main_table.basic_prefixes);
             dbg!(&self.main_table.suffixes);
+            dbg!(&self.extended_table.prefixes);
+            dbg!(&self.extended_table.suffixes);
 
             if let CompletenessCheckResult::UncoveredPrefix(prefix) = self.check_completeness() {
                 println!("fix completeness");
@@ -159,7 +161,7 @@ impl<'a> NlImpl<'a> {
         );
         for prefix in &epsilon_absorbed_prefixes {
             let index = prefix_to_index.get(prefix).unwrap();
-            automata.transitions[START][*index] = Some(EPSILON.to_owned());
+            automata.transitions[START][*index].insert(EPSILON.to_owned());
         }
 
         for (prefix, index) in &prefix_to_index {
@@ -173,7 +175,8 @@ impl<'a> NlImpl<'a> {
                 );
                 for absorbed_prefix in &extension_absorbed_prefixes {
                     let absorbed_prefix_index = prefix_to_index.get(absorbed_prefix).unwrap();
-                    automata.transitions[*index][*absorbed_prefix_index] = Some(letter.to_string());
+                    automata.transitions[*index][*absorbed_prefix_index].insert(letter.to_string());
+                    println!("add transition {} to {} by {}", index, absorbed_prefix_index, letter);
                 }
             }
         }
